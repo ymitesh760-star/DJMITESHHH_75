@@ -1,0 +1,44 @@
+rules_version = '2';
+
+// ===============================================================
+// Firebase Storage Security Rules
+// Project: mitesh-music-studio (DJ Miteshhh 75 Music Studio)
+// ===============================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to verify authorized DJ studio administrator
+    function isAdmin() {
+      return request.auth != null && (
+        ('admin' in request.auth.token && request.auth.token.admin == true) ||
+        ('role' in request.auth.token && request.auth.token.role == 'admin') ||
+        ('email' in request.auth.token && request.auth.token.email != null && (
+          request.auth.token.email == 'djmiteshhh75@gmail.com' ||
+          request.auth.token.email == 'miteshyadav7575@gmail.com' ||
+          request.auth.token.email.matches('(?i)^djmiteshhh75@gmail\\.com$') ||
+          request.auth.token.email.matches('(?i)^miteshyadav7575@gmail\\.com$') ||
+          request.auth.token.email.matches('(?i).*@djmitesh75\\.com$')
+        ))
+      );
+    }
+    
+    // Audio Vault: Lossless WAV, MP3, FLAC, M4A, OGG
+    match /audio/{allPaths=**} {
+      // Public visitors can stream and listen to audio without authentication
+      allow read: if true;
+      
+      // Only verified admin can upload, replace, or delete audio files
+      allow write: if isAdmin();
+    }
+    
+    // Artwork Vault: High-res square cover images
+    match /artworks/{allPaths=**} {
+      // Public visitors can load album artworks without authentication
+      allow read: if true;
+      
+      // Only verified admin can upload or delete artworks
+      allow write: if isAdmin();
+    }
+  }
+}

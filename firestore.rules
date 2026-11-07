@@ -1,0 +1,283 @@
+rules_version = '2';
+
+// ===============================================================
+// Cloud Firestore Security Rules
+// Project: DJ Miteshhh 75 Music Studio (mitesh-music-studio)
+// ===============================================================
+//
+// ===============================================================
+// Assumed Data Models
+// ===============================================================
+//
+// Collection: tracks
+// Document ID: trackId (e.g., track-1730900000000-abcde)
+// Fields:
+//   - id: string (optional, 1-100 chars, immutable) - unique track identifier
+//   - title: string (required, 1-200 chars) - track title
+//   - remixTitle: string (optional, 0-200 chars) - remix version name (e.g. "Club Mix")
+//   - originalArtist: string (optional, 0-200 chars) - original artist name
+//   - remixer: string (optional, 0-200 chars) - remixing DJ name
+//   - genre: string (optional, 0-100 chars) - musical genre
+//   - bpm: number (optional, 0-500) - tempo in beats per minute
+//   - key: string (optional, 0-30 chars) - musical key signature (e.g. "8A", "Am")
+//   - duration: number (required, > 0 and <= 86400) - audio duration in seconds
+//   - durationFormatted: string (optional, 0-30 chars) - formatted duration string (e.g. "04:32")
+//   - format: string (optional, 0-20 chars) - audio codec format (e.g. "WAV", "MP3")
+//   - bitDepth: string (optional, 0-20 chars) - bit depth (e.g. "24-bit")
+//   - sampleRate: string (optional, 0-30 chars) - sample rate (e.g. "96 kHz")
+//   - fileSizeFormatted: string (optional, 0-50 chars) - human-readable file size (e.g. "45.2 MB")
+//   - fileSizeBytes: number (optional, >= 0) - raw file size in bytes
+//   - audioUrl: string (required, 1-2000 chars, valid URL) - Firebase Storage or stream audio URL
+//   - audioStoragePath: string (optional, 0-500 chars) - Storage reference path for file deletion
+//   - coverUrl: string (optional, 0-5000 chars) - artwork image URL or data URI
+//   - artworkStoragePath: string (optional, 0-500 chars) - Storage reference path for artwork deletion
+//   - waveformPeaks: list (optional, max 500 numbers) - visualizer waveform amplitude peaks
+//   - plays: number (optional, >= 0) - streaming play count
+//   - likes: number (optional, >= 0) - user favorite / like count
+//   - isFavorite: bool (optional) - client favorite state flag
+//   - featured: bool (optional) - featured track banner flag
+//   - published: bool (required) - public release status (true: live, false: unlisted/draft)
+//   - releaseDate: string (optional, 0-50 chars) - release date string (YYYY-MM-DD)
+//   - tags: list (optional, max 50 strings) - searchable genre/mood tags
+//   - description: string (optional, 0-5000 chars) - studio liner notes & description
+//   - lyrics: list (optional, max 200 items) - lyrics or track cues
+//   - stemsAvailable: bool (optional) - stem pack availability flag
+//   - createdAt: number/timestamp (required, > 0, immutable) - creation epoch timestamp
+//   - updatedAt: number/timestamp (optional, > 0) - last modification epoch timestamp
+//
+// Collection: playlists
+// Document ID: playlistId (e.g., playlist-1730900000000)
+// Fields:
+//   - id: string (optional, 1-100 chars, immutable) - playlist identifier
+//   - title: string (required, 1-200 chars) - playlist display name
+//   - subtitle: string (optional, 0-200 chars) - playlist subtitle or theme
+//   - coverUrl: string (optional, 0-5000 chars) - playlist cover artwork URL
+//   - artworkStoragePath: string (optional, 0-500 chars) - Storage path for artwork
+//   - description: string (optional, 0-2000 chars) - playlist summary
+//   - genre: string (optional, 0-100 chars) - dominant genre
+//   - trackIds: list (optional, max 500 strings) - ordered track identifiers
+//   - curator: string (optional, 0-100 chars) - DJ / curator name
+//   - createdAt: number/timestamp (optional, > 0, immutable) - creation epoch timestamp
+//   - updatedAt: number/timestamp (optional, > 0) - update epoch timestamp
+//
+// Collection: admins
+// Document ID: adminId (Firebase Auth UID)
+// Description: Internal admin directory. Whitelisted admin users can manage the studio.
+// Client writes are completely prohibited to prevent privilege escalation.
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the current request is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Verify user has administrative privileges via custom claims, admins collection, or authorized email bootstrap
+    function isAdmin() {
+      return isAuthenticated() && (
+        ('admin' in request.auth.token && request.auth.token.admin == true) ||
+        ('role' in request.auth.token && request.auth.token.role == 'admin') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (
+          'email' in request.auth.token &&
+          request.auth.token.email != null &&
+          (
+            request.auth.token.email == 'djmiteshhh75@gmail.com' ||
+            request.auth.token.email == 'miteshyadav7575@gmail.com' ||
+            request.auth.token.email.matches('(?i)^djmiteshhh75@gmail\\.com$') ||
+            request.auth.token.email.matches('(?i)^miteshyadav7575@gmail\\.com$') ||
+            request.auth.token.email.matches('(?i).*@djmitesh75\\.com$')
+          )
+        )
+      );
+    }
+
+    // Validate timestamp (supports Unix epoch number in milliseconds or Firestore timestamp)
+    function isValidTimestamp(val) {
+      return (val is number && val > 0) || val is timestamp;
+    }
+
+    // Validate audio URL (must start with http://, https://, gs://, or blob:)
+    function isValidAudioUrl(url) {
+      return url is string &&
+        url.size() > 0 &&
+        url.size() <= 2000 &&
+        (url.matches("^https?://.*") || url.matches("^gs://.*") || url.matches("^blob:.*"));
+    }
+
+    // Validate optional string field constraints
+    function isValidOptionalString(data, field, minLen, maxLen) {
+      return !(field in data) ||
+        (data[field] is string &&
+         data[field].size() >= minLen &&
+         data[field].size() <= maxLen);
+    }
+
+    // Check that immutable track fields are not altered during an update
+    function areImmutableTrackFieldsUnchanged() {
+      return (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+             (!('id' in resource.data) || request.resource.data.id == resource.data.id);
+    }
+
+    // Check that immutable playlist fields are not altered during an update
+    function areImmutablePlaylistFieldsUnchanged() {
+      return (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+             (!('id' in resource.data) || request.resource.data.id == resource.data.id);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    // Validate track document schema, required fields, data types, and bounds
+    function isValidTrack(data) {
+      let requiredFields = ['title', 'audioUrl', 'duration', 'published', 'createdAt'];
+      let allowedFields = [
+        'id', 'title', 'remixTitle', 'originalArtist', 'remixer', 'genre',
+        'bpm', 'key', 'duration', 'durationFormatted', 'format', 'bitDepth',
+        'sampleRate', 'fileSizeFormatted', 'fileSizeBytes', 'audioUrl',
+        'audioStoragePath', 'coverUrl', 'artworkStoragePath', 'waveformPeaks',
+        'plays', 'likes', 'isFavorite', 'featured', 'published', 'releaseDate',
+        'tags', 'description', 'lyrics', 'stemsAvailable', 'createdAt', 'updatedAt'
+      ];
+
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allowedFields) &&
+             // Required fields
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             isValidAudioUrl(data.audioUrl) &&
+             data.duration is number && data.duration > 0 && data.duration <= 86400 &&
+             data.published is bool &&
+             isValidTimestamp(data.createdAt) &&
+             // Optional string fields with length limits to prevent DoS
+             isValidOptionalString(data, 'id', 1, 100) &&
+             isValidOptionalString(data, 'remixTitle', 0, 200) &&
+             isValidOptionalString(data, 'originalArtist', 0, 200) &&
+             isValidOptionalString(data, 'remixer', 0, 200) &&
+             isValidOptionalString(data, 'genre', 0, 100) &&
+             isValidOptionalString(data, 'key', 0, 30) &&
+             isValidOptionalString(data, 'durationFormatted', 0, 30) &&
+             isValidOptionalString(data, 'format', 0, 20) &&
+             isValidOptionalString(data, 'bitDepth', 0, 20) &&
+             isValidOptionalString(data, 'sampleRate', 0, 30) &&
+             isValidOptionalString(data, 'fileSizeFormatted', 0, 50) &&
+             isValidOptionalString(data, 'audioStoragePath', 0, 500) &&
+             isValidOptionalString(data, 'coverUrl', 0, 5000) &&
+             isValidOptionalString(data, 'artworkStoragePath', 0, 500) &&
+             isValidOptionalString(data, 'releaseDate', 0, 50) &&
+             isValidOptionalString(data, 'description', 0, 5000) &&
+             // Optional numeric fields with sensible bounds
+             (!('bpm' in data) || (data.bpm is number && data.bpm >= 0 && data.bpm <= 500)) &&
+             (!('fileSizeBytes' in data) || (data.fileSizeBytes is number && data.fileSizeBytes >= 0)) &&
+             (!('plays' in data) || (data.plays is number && data.plays >= 0)) &&
+             (!('likes' in data) || (data.likes is number && data.likes >= 0)) &&
+             (!('updatedAt' in data) || isValidTimestamp(data.updatedAt)) &&
+             // Optional booleans
+             (!('isFavorite' in data) || data.isFavorite is bool) &&
+             (!('featured' in data) || data.featured is bool) &&
+             (!('stemsAvailable' in data) || data.stemsAvailable is bool) &&
+             // Optional lists with size limits
+             (!('waveformPeaks' in data) || (data.waveformPeaks is list && data.waveformPeaks.size() <= 500)) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 50)) &&
+             (!('lyrics' in data) || (data.lyrics is list && data.lyrics.size() <= 200));
+    }
+
+    // Public play count increment: allows unauthenticated visitors to increment plays on published tracks
+    function isPublicPlayIncrement() {
+      return ('published' in resource.data && resource.data.published == true) &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plays']) &&
+             request.resource.data.plays is number &&
+             (
+               (!('plays' in resource.data) && request.resource.data.plays == 1) ||
+               (request.resource.data.plays == resource.data.plays + 1)
+             );
+    }
+
+    // Validate playlist document schema, required fields, data types, and bounds
+    function isValidPlaylist(data) {
+      let requiredFields = ['title'];
+      let allowedFields = [
+        'id', 'title', 'subtitle', 'coverUrl', 'artworkStoragePath',
+        'description', 'genre', 'trackIds', 'curator', 'createdAt', 'updatedAt'
+      ];
+
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allowedFields) &&
+             // Title
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             // Optional strings with length limits
+             isValidOptionalString(data, 'id', 1, 100) &&
+             isValidOptionalString(data, 'subtitle', 0, 200) &&
+             isValidOptionalString(data, 'coverUrl', 0, 5000) &&
+             isValidOptionalString(data, 'artworkStoragePath', 0, 500) &&
+             isValidOptionalString(data, 'description', 0, 2000) &&
+             isValidOptionalString(data, 'genre', 0, 100) &&
+             isValidOptionalString(data, 'curator', 0, 100) &&
+             // Optional list with size limit
+             (!('trackIds' in data) || (data.trackIds is list && data.trackIds.size() <= 500)) &&
+             // Optional timestamps
+             (!('createdAt' in data) || isValidTimestamp(data.createdAt)) &&
+             (!('updatedAt' in data) || isValidTimestamp(data.updatedAt));
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Tracks Collection: /tracks/{trackId}
+    match /tracks/{trackId} {
+      // Public read: Anyone can read published tracks
+      // Admin read: Verified admins can read all tracks (including unpublished drafts)
+      allow read: if isAdmin() || 
+                     ('published' in resource.data && resource.data.published == true);
+
+      // Create: Verified admin only, strictly validated
+      allow create: if isAdmin() && isValidTrack(request.resource.data);
+
+      // Update: Verified admin (with full validation and immutable field protection)
+      // OR unauthenticated public visitor incrementing play count on a published track
+      allow update: if (isAdmin() && isValidTrack(request.resource.data) && areImmutableTrackFieldsUnchanged()) ||
+                       isPublicPlayIncrement();
+
+      // Delete: Verified admin only
+      allow delete: if isAdmin();
+    }
+
+    // Playlists Collection: /playlists/{playlistId}
+    match /playlists/{playlistId} {
+      // Public read: Anyone can read playlists
+      allow read: if true;
+
+      // Create: Verified admin only, strictly validated
+      allow create: if isAdmin() && isValidPlaylist(request.resource.data);
+
+      // Update: Verified admin only, strictly validated with immutable field protection
+      allow update: if isAdmin() && isValidPlaylist(request.resource.data) && areImmutablePlaylistFieldsUnchanged();
+
+      // Delete: Verified admin only
+      allow delete: if isAdmin();
+    }
+
+    // Admins Collection: /admins/{adminId}
+    // Whitelisted admin directory. Completely prevent client SDK writes so normal users cannot assign themselves or others the admin role.
+    match /admins/{adminId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    // ===============================================================
+    // Default Deny Rule
+    // ===============================================================
+    // Deny all reads and writes to any unspecified collections or documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
