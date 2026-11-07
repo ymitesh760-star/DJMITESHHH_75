@@ -1180,7 +1180,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
                                   <button
                                     onClick={() => {
-                                      if (confirm(`Are you sure you want to delete "${track.title}"? This permanently deletes the audio file from Firebase Storage.`)) {
+                                      if (confirm(`Are you sure you want to delete "${track.title}"? This permanently deletes the track from the studio.`)) {
                                         deleteTrack(track);
                                       }
                                     }}
@@ -1238,7 +1238,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                         Upload single or multiple files directly from your laptop. Supports <strong className="text-dj-cyan">24-bit WAV</strong>, FLAC, 320kbps MP3, M4A, and OGG formats. Original quality is preserved without conversion.
                       </p>
                       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-mono text-zinc-300">
-                        <span>FIREBASE STORAGE STREAMING READY</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+                        <span>CLOUDINARY MEDIA VAULT & FIRESTORE READY</span>
                       </div>
                     </label>
                   </div>
@@ -1334,7 +1335,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                                   <button
                                     onClick={() => retryItemUpload(item)}
                                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-mono text-xs font-bold transition-colors"
-                                    title="Retry Upload to Firebase Storage"
+                                    title="Retry Upload to Cloudinary"
                                   >
                                     <RotateCcw className="w-3.5 h-3.5" />
                                     <span>Retry</span>
@@ -1762,7 +1763,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                   <div>
                     <h4 className="text-lg font-display font-bold text-white">FIREBASE PROJECT CONFIGURATION</h4>
                     <p className="text-xs text-zinc-400 mt-1 font-sans">
-                      Connect your Google Cloud Firebase project (`mitesh-music-studio`) for Cloud Firestore, Storage, and Authentication. These settings enable uploads to work on both localhost and your live deployed site (Vercel / Netlify).
+                      Connect your Google Cloud Firebase project (`dj-mitesh-music`) for Cloud Firestore, Storage, and Authentication. These settings enable uploads to work on both localhost and your live deployed site (Vercel / Netlify).
                     </p>
                   </div>
 
@@ -1822,6 +1823,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                     )}
                   </div>
 
+                  {/* Cloudinary Media Vault Status */}
+                  <div className="p-4 rounded-2xl bg-zinc-950/90 border border-white/10 space-y-3 text-xs font-mono">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white font-bold flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        CLOUDINARY MEDIA VAULT (AUDIO & ARTWORKS)
+                      </span>
+                      <span className="text-[10px] text-dj-cyan font-bold bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                        SPARK COMPLIANT
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-zinc-400 text-[11px] pt-1">
+                      <div className="p-2.5 rounded-lg bg-zinc-900 border border-white/5">
+                        <span className="text-zinc-500 block text-[10px]">CLOUD NAME:</span>
+                        <span className="text-white font-bold">{import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'le9ztzey'}</span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-zinc-900 border border-white/5">
+                        <span className="text-zinc-500 block text-[10px]">UPLOAD PRESET:</span>
+                        <span className="text-white font-bold">{import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'dj_music_upload'}</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="p-4 rounded-2xl bg-zinc-950 border border-white/10 space-y-4 text-xs font-mono">
                     <div className="space-y-1">
                       <label className="text-zinc-400 block">API KEY (apiKey)</label>
@@ -1840,7 +1864,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                         type="text"
                         value={configForm.projectId}
                         onChange={(e) => setConfigForm({ ...configForm, projectId: e.target.value })}
-                        placeholder="mitesh-music-studio"
+                        placeholder="dj-mitesh-music"
                         className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-white/10 text-white font-mono"
                       />
                     </div>
@@ -1851,7 +1875,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                         type="text"
                         value={configForm.authDomain}
                         onChange={(e) => setConfigForm({ ...configForm, authDomain: e.target.value })}
-                        placeholder="mitesh-music-studio.firebaseapp.com"
+                        placeholder="dj-mitesh-music.firebaseapp.com"
                         className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-white/10 text-white font-mono"
                       />
                     </div>
@@ -1862,7 +1886,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                         type="text"
                         value={configForm.storageBucket}
                         onChange={(e) => setConfigForm({ ...configForm, storageBucket: e.target.value })}
-                        placeholder="mitesh-music-studio.firebasestorage.app"
+                        placeholder="dj-mitesh-music.firebasestorage.app"
                         className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-white/10 text-white font-mono"
                       />
                     </div>

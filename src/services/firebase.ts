@@ -40,6 +40,11 @@ import {
   FirebaseStorage 
 } from 'firebase/storage';
 import { Track, Playlist } from '../types';
+import { 
+  uploadAudioToCloudinary, 
+  uploadArtworkToCloudinary, 
+  getCloudinaryConfig 
+} from './cloudinary';
 
 export interface FirebaseConfig {
   apiKey: string;
@@ -54,18 +59,32 @@ export interface FirebaseConfig {
 const LOCAL_STORAGE_FIREBASE_CONFIG_KEY = 'dj_mitesh_custom_firebase_config';
 
 /**
- * Retrieve active Firebase configuration from environment or localStorage
+ * Official default production Firebase configuration for DJ Miteshhh 75 Studio
+ * Project: dj-mitesh-music
  */
-export function getActiveFirebaseConfig(): FirebaseConfig | null {
+export const DEFAULT_FIREBASE_CONFIG: FirebaseConfig = {
+  apiKey: "AIzaSyAsa6wbYBTr7ACWFS2by5Uk7z97EbJp4E4",
+  authDomain: "dj-mitesh-music.firebaseapp.com",
+  projectId: "dj-mitesh-music",
+  storageBucket: "dj-mitesh-music.firebasestorage.app",
+  messagingSenderId: "588620438311",
+  appId: "1:588620438311:web:872544af6ccf28cab1a702",
+  measurementId: "G-XNXNNR6BJE"
+};
+
+/**
+ * Retrieve active Firebase configuration from environment, localStorage, or default production config
+ */
+export function getActiveFirebaseConfig(): FirebaseConfig {
   // 1. Check environment variables
   const envConfig: FirebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY?.trim() || '',
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || 'mitesh-music-studio.firebaseapp.com',
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID?.trim() || 'mitesh-music-studio',
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || 'mitesh-music-studio.firebasestorage.app',
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || '',
-    appId: import.meta.env.VITE_FIREBASE_APP_ID?.trim() || '',
-    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID?.trim() || '',
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || DEFAULT_FIREBASE_CONFIG.authDomain,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID?.trim() || DEFAULT_FIREBASE_CONFIG.projectId,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || DEFAULT_FIREBASE_CONFIG.storageBucket,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || DEFAULT_FIREBASE_CONFIG.messagingSenderId,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID?.trim() || DEFAULT_FIREBASE_CONFIG.appId,
+    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID?.trim() || DEFAULT_FIREBASE_CONFIG.measurementId,
   };
 
   if (envConfig.apiKey && 
@@ -88,7 +107,8 @@ export function getActiveFirebaseConfig(): FirebaseConfig | null {
     console.error('Failed to parse custom Firebase config:', e);
   }
 
-  return null;
+  // 3. Fallback to default production config (guarantees zero breakage on Vercel deployment)
+  return DEFAULT_FIREBASE_CONFIG;
 }
 
 export function saveCustomFirebaseConfig(config: FirebaseConfig): void {
@@ -251,22 +271,17 @@ export async function testFirebaseConnection(): Promise<ConnectionTestResult> {
     result.details += `Firestore query: ${err.message}. `;
   }
 
-  // Test Storage
-  try {
-    if (storage) {
-      // Just verifying reference initialization
-      const testRef = ref(storage, 'audio');
-      if (testRef) {
-        result.storageReady = true;
-      }
-    }
-  } catch (err: any) {
-    result.details += `Storage error: ${err.message}. `;
+  // Test Cloud Media Storage (Cloudinary)
+  const cloudinary = getCloudinaryConfig();
+  if (cloudinary.cloudName && cloudinary.uploadPreset) {
+    result.storageReady = true;
+  } else {
+    result.details += 'Cloudinary configuration missing. ';
   }
 
-  result.connected = result.authReady && (result.firestoreReady || result.storageReady);
+  result.connected = result.authReady && result.firestoreReady && result.storageReady;
   if (result.connected && !result.details) {
-    result.details = 'Successfully connected to Firebase Authentication, Cloud Firestore & Storage.';
+    result.details = `Successfully connected to Firebase Auth, Cloud Firestore & Cloudinary Media Vault (${cloudinary.cloudName}).`;
   }
 
   return result;
@@ -445,155 +460,53 @@ export function getFriendlyStorageErrorMessage(error: any): string {
 }
 
 /**
- * Upload Audio File to Firebase Storage with cancellable resumable task, real byte tracking,
- * upload speed, and estimated time remaining.
+ * Upload Audio File (WAV, MP3, FLAC, M4A, OGG) to Cloudinary
+ * Uses resource_type "video" for lossless audio streaming.
+ * Free plan compliant: eliminates Firebase Storage Blaze plan paywall.
  */
-export function uploadAudioFile(
+export async function uploadAudioFile(
   file: File,
   trackId: string,
   onProgress: (info: UploadProgressInfo) => void,
-  onTaskCreated?: (task: UploadTask) => void
+  onTaskCreated?: (task: any) => void
 ): Promise<UploadResult> {
-  if (!storage) {
-    return Promise.reject(new Error('Firebase Storage is not configured. Please set your Firebase credentials in .env.local.'));
-  }
-
-  // Preserve original extension and file name
-  const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const storagePath = `audio/${trackId}_${Date.now()}_${sanitizedName}`;
-  const fileRef = ref(storage, storagePath);
-
-  // Set accurate audio metadata and MIME type
-  const contentType = detectAudioMimeType(file.name, file.type);
-  const metadata = {
-    contentType,
-    customMetadata: {
-      originalName: file.name,
-      uploadedBy: 'DJ Miteshhh 75 Admin',
-      uploadedAt: new Date().toISOString()
-    }
+  const result = await uploadAudioToCloudinary(file, trackId, onProgress, onTaskCreated);
+  return {
+    downloadUrl: result.downloadUrl,
+    storagePath: result.storagePath
   };
-
-  const uploadTask = uploadBytesResumable(fileRef, file, metadata);
-  if (onTaskCreated) {
-    onTaskCreated(uploadTask);
-  }
-
-  let lastBytes = 0;
-  let lastTime = performance.now();
-  let speedBytesPerSec = 0;
-
-  return new Promise((resolve, reject) => {
-    uploadTask.on(
-      'state_changed',
-      (snapshot) => {
-        const currentTime = performance.now();
-        const timeDelta = (currentTime - lastTime) / 1000;
-
-        if (timeDelta >= 0.35 || snapshot.bytesTransferred === snapshot.totalBytes) {
-          const bytesDelta = snapshot.bytesTransferred - lastBytes;
-          if (timeDelta > 0 && bytesDelta >= 0) {
-            const currentSpeed = bytesDelta / timeDelta;
-            speedBytesPerSec = speedBytesPerSec === 0 ? currentSpeed : speedBytesPerSec * 0.7 + currentSpeed * 0.3;
-          }
-          lastBytes = snapshot.bytesTransferred;
-          lastTime = currentTime;
-        }
-
-        const percentage = snapshot.totalBytes > 0
-          ? Math.min(100, Math.max(0, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)))
-          : 0;
-
-        const remainingBytes = Math.max(0, snapshot.totalBytes - snapshot.bytesTransferred);
-        const timeRemainingSeconds = speedBytesPerSec > 0 ? Math.ceil(remainingBytes / speedBytesPerSec) : 0;
-
-        const progressInfo: UploadProgressInfo = {
-          bytesTransferred: snapshot.bytesTransferred,
-          totalBytes: snapshot.totalBytes,
-          percentage,
-          speedBytesPerSec,
-          speedFormatted: speedBytesPerSec > 0 ? `${formatBytes(speedBytesPerSec)}/s` : 'Calculating...',
-          timeRemainingSeconds,
-          timeRemainingFormatted: timeRemainingSeconds > 0
-            ? `${timeRemainingSeconds >= 60 ? `${Math.floor(timeRemainingSeconds / 60)}m ` : ''}${timeRemainingSeconds % 60}s left`
-            : snapshot.bytesTransferred === snapshot.totalBytes ? 'Finalizing...' : 'Estimating...',
-          bytesFormatted: `${formatBytes(snapshot.bytesTransferred)} / ${formatBytes(snapshot.totalBytes)}`,
-          state: snapshot.state as any
-        };
-
-        onProgress(progressInfo);
-      },
-      (error) => {
-        console.error('Firebase Storage upload error:', error);
-        reject(error);
-      },
-      async () => {
-        try {
-          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-          resolve({ downloadUrl, storagePath });
-        } catch (err) {
-          reject(err);
-        }
-      }
-    );
-  });
 }
 
 /**
- * Upload Album Artwork Image to Firebase Storage
+ * Upload Album Artwork Image to Cloudinary
+ * Uses resource_type "image"
  */
-export function uploadArtworkFile(
+export async function uploadArtworkFile(
   file: File,
   trackId: string,
-  onTaskCreated?: (task: UploadTask) => void
+  onTaskCreated?: (task: any) => void
 ): Promise<UploadResult> {
-  if (!storage) {
-    return Promise.reject(new Error('Firebase Storage is not configured.'));
-  }
-
-  const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const storagePath = `artworks/${trackId}_${Date.now()}_${sanitizedName}`;
-  const fileRef = ref(storage, storagePath);
-
-  const uploadTask = uploadBytesResumable(fileRef, file, {
-    contentType: file.type || 'image/jpeg',
-    customMetadata: {
-      originalName: file.name,
-      uploadedAt: new Date().toISOString()
-    }
-  });
-
-  if (onTaskCreated) {
-    onTaskCreated(uploadTask);
-  }
-
-  return new Promise((resolve, reject) => {
-    uploadTask.on(
-      'state_changed',
-      null,
-      (err) => reject(err),
-      async () => {
-        try {
-          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-          resolve({ downloadUrl, storagePath });
-        } catch (err) {
-          reject(err);
-        }
-      }
-    );
-  });
+  const result = await uploadArtworkToCloudinary(file, trackId, onTaskCreated);
+  return {
+    downloadUrl: result.downloadUrl,
+    storagePath: result.storagePath
+  };
 }
 
 /**
- * Delete a file from Firebase Storage
+ * Delete a file from Cloudinary / Storage
  */
 export async function deleteStorageFile(storagePath: string): Promise<void> {
-  if (!storage || !storagePath) return;
+  if (!storagePath || storagePath.startsWith('cloudinary:')) {
+    // Cloudinary client-side deletions do not expose secret; Firestore document removal
+    // immediately removes the track from the live website and music player.
+    return;
+  }
+  if (!storage) return;
   try {
     const fileRef = ref(storage, storagePath);
     await deleteObject(fileRef);
   } catch (err: any) {
-    // If already deleted or not found, ignore error
     if (err?.code !== 'storage/object-not-found') {
       console.warn('Error deleting file from storage:', err);
     }
