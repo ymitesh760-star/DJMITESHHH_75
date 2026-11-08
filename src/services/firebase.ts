@@ -73,41 +73,54 @@ export const DEFAULT_FIREBASE_CONFIG: FirebaseConfig = {
 };
 
 /**
- * Retrieve active Firebase configuration from environment, localStorage, or default production config
+ * Retrieve active Firebase configuration with legacy project sanitization
  */
 export function getActiveFirebaseConfig(): FirebaseConfig {
-  // 1. Check environment variables
-  const envConfig: FirebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY?.trim() || '',
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || DEFAULT_FIREBASE_CONFIG.authDomain,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID?.trim() || DEFAULT_FIREBASE_CONFIG.projectId,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || DEFAULT_FIREBASE_CONFIG.storageBucket,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || DEFAULT_FIREBASE_CONFIG.messagingSenderId,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID?.trim() || DEFAULT_FIREBASE_CONFIG.appId,
-    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID?.trim() || DEFAULT_FIREBASE_CONFIG.measurementId,
-  };
-
-  if (envConfig.apiKey && 
-      envConfig.apiKey !== 'AIzaSyDEMO-KEY-DJ-MITESHHH-75' && 
-      envConfig.apiKey !== 'your_firebase_api_key_here' &&
-      envConfig.projectId) {
-    return envConfig;
-  }
-
-  // 2. Check localStorage (allows live website setup directly in browser)
+  // 1. Check and clean localStorage (purge any stale legacy project configuration)
   try {
     const customConfigStr = localStorage.getItem(LOCAL_STORAGE_FIREBASE_CONFIG_KEY);
     if (customConfigStr) {
       const parsed = JSON.parse(customConfigStr);
-      if (parsed.apiKey && parsed.projectId) {
+      if (
+        parsed.projectId === DEFAULT_FIREBASE_CONFIG.projectId && 
+        parsed.apiKey && 
+        parsed.apiKey.startsWith('AIzaSy')
+      ) {
         return parsed as FirebaseConfig;
+      } else {
+        // Automatically purge outdated project config (e.g. legacy mitesh-music-studio)
+        localStorage.removeItem(LOCAL_STORAGE_FIREBASE_CONFIG_KEY);
       }
     }
   } catch (e) {
     console.error('Failed to parse custom Firebase config:', e);
   }
 
-  // 3. Fallback to default production config (guarantees zero breakage on Vercel deployment)
+  // 2. Check environment variables
+  const envApiKey = import.meta.env.VITE_FIREBASE_API_KEY?.trim();
+  const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID?.trim();
+
+  // If environment variables match current project dj-mitesh-music and have valid key
+  if (
+    envApiKey && 
+    envApiKey !== 'AIzaSyDEMO-KEY-DJ-MITESHHH-75' && 
+    envApiKey !== 'your_firebase_api_key_here' &&
+    envProjectId &&
+    envProjectId === DEFAULT_FIREBASE_CONFIG.projectId
+  ) {
+    return {
+      apiKey: envApiKey,
+      authDomain: `${DEFAULT_FIREBASE_CONFIG.projectId}.firebaseapp.com`,
+      projectId: DEFAULT_FIREBASE_CONFIG.projectId,
+      storageBucket: `${DEFAULT_FIREBASE_CONFIG.projectId}.firebasestorage.app`,
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || DEFAULT_FIREBASE_CONFIG.messagingSenderId,
+      appId: import.meta.env.VITE_FIREBASE_APP_ID?.trim() || DEFAULT_FIREBASE_CONFIG.appId,
+      measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID?.trim() || DEFAULT_FIREBASE_CONFIG.measurementId,
+    };
+  }
+
+  // 3. Guaranteed production default configuration for dj-mitesh-music
+  // Ensures 100% reliable initialization on Vercel deployment without missing env vars
   return DEFAULT_FIREBASE_CONFIG;
 }
 

@@ -253,6 +253,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
         setAuthError('Password should be at least 6 characters.');
       } else if (err.code === 'auth/too-many-requests') {
         setAuthError('Access temporarily disabled due to multiple failed login attempts. Please reset your password or try again later.');
+      } else if (err.code === 'auth/configuration-not-found' || err.message?.includes('configuration-not-found')) {
+        setAuthError(
+          'Firebase Authentication is not yet activated in your Firebase Console for project "dj-mitesh-music".\n\n' +
+          'Quick 1-Minute Fix:\n' +
+          '1. Open Firebase Console: https://console.firebase.google.com/project/dj-mitesh-music/authentication\n' +
+          '2. Click the blue "Get started" button under Authentication.\n' +
+          '3. In the "Sign-in method" tab, click "Email/Password" and switch it to "Enable" > Save.\n' +
+          '4. Click "Google", switch it to "Enable", choose support email "djmiteshhh75@gmail.com" > Save.\n' +
+          '5. In "Settings" > "Authorized domains", click "Add domain" and enter "djmiteshhh-75.vercel.app".'
+        );
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setAuthError('Email/Password Sign-In is not enabled. In Firebase Console > Authentication > Sign-in method, enable Email/Password.');
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setAuthError(
+          'This domain (djmiteshhh-75.vercel.app) is not authorized in Firebase Console.\n\n' +
+          'Fix: Go to Firebase Console > Authentication > Settings > Authorized domains > Add "djmiteshhh-75.vercel.app".'
+        );
       } else {
         setAuthError(err.message || 'Authentication failed. Please check your credentials.');
       }
@@ -269,13 +286,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     try {
       await signInWithGoogle();
     } catch (err: any) {
-      console.error(err);
+      console.error('Google Sign-In error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
         setAuthError('Google sign-in popup was closed before completing.');
       } else if (err.code === 'auth/unauthorized-domain') {
-        setAuthError('This domain is not authorized in Firebase Console. Add "localhost" or your domain in Authentication > Settings > Authorized domains.');
+        setAuthError(
+          'This domain (djmiteshhh-75.vercel.app) is not authorized for Google Sign-In.\n\n' +
+          'Fix: Open Firebase Console > Authentication > Settings > Authorized domains > Click "Add domain" > Enter "djmiteshhh-75.vercel.app".'
+        );
       } else if (err.code === 'auth/popup-blocked') {
-        setAuthError('Popup blocked by browser. Please allow popups for this site.');
+        setAuthError('Popup blocked by browser. Please allow popups for djmiteshhh-75.vercel.app in your browser settings.');
+      } else if (err.code === 'auth/configuration-not-found' || err.message?.includes('configuration-not-found')) {
+        setAuthError(
+          'Google Sign-In is not enabled in Firebase Console for project "dj-mitesh-music".\n\n' +
+          'Quick 1-Minute Fix:\n' +
+          '1. Open: https://console.firebase.google.com/project/dj-mitesh-music/authentication/providers\n' +
+          '2. Click "Get started" (if prompted).\n' +
+          '3. Under "Sign-in method", click "Google" > Click "Enable".\n' +
+          '4. Select your support email (djmiteshhh75@gmail.com) and click "Save".\n' +
+          '5. In "Settings" > "Authorized domains", add "djmiteshhh-75.vercel.app".'
+        );
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setAuthError('Google Sign-In is disabled in Firebase Console. Go to Authentication > Sign-in method and enable Google.');
       } else {
         setAuthError(err.message || 'Google sign-in failed. Please verify Authentication is enabled in Firebase Console.');
       }
@@ -953,9 +985,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                 )}
 
                 {authError && (
-                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-mono flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{authError}</span>
+                  <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-300 font-mono flex items-start gap-2.5 whitespace-pre-line leading-relaxed text-left">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+                    <span className="flex-1">{authError}</span>
                   </div>
                 )}
 

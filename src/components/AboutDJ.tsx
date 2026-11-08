@@ -1,23 +1,7 @@
 import React from 'react';
-import { motion } from 'framer-motion';
-import { 
-  Headphones, 
-  Disc, 
-  Sparkles, 
-  Radio, 
-  Flame, 
-  Sliders,
-  Layers,
-  ArrowUpRight
-} from 'lucide-react';
-import { STUDIO_BRANDING, DEFAULT_COVER_ART } from '../constants/branding';
+import { DEFAULT_COVER_ART } from '../constants/branding';
 
 export const AboutDJ: React.FC = () => {
-  const genres = [
-    'Tech House', 'Latin Drill', 'Bollywood Edit', 
-    'Club Mix', 'EDM', 'Afro House', 'Festival Dubplates'
-  ];
-
   const soundPrinciples = [
     {
       title: '24-Bit Lossless WAV Audio Vault',
@@ -33,22 +17,15 @@ export const AboutDJ: React.FC = () => {
     }
   ];
 
-  const socials = [
-    { name: 'Instagram', url: 'https://instagram.com/djmiteshhh_75', icon: Flame, handle: '@djmiteshhh_75' },
-    { name: 'SoundCloud', url: 'https://soundcloud.com', icon: Radio, handle: 'DJ Miteshhh 75' },
-    { name: 'YouTube', url: 'https://youtube.com', icon: Disc, handle: 'DJ Mitesh Official' },
-    { name: 'Spotify Artist', url: 'https://spotify.com', icon: Headphones, handle: 'DJ Miteshhh' }
-  ];
-
   return (
-    <section id="about" className="py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto scroll-mt-24 select-none">
+    <section id="about" className="py-20 sm:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto scroll-mt-24 select-none">
       
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
         
         {/* LEFT COLUMN: BRAND VISUAL & STUDIO IDENTITY */}
         <div className="lg:col-span-5 relative">
           
-          <div className="relative rounded-3xl overflow-hidden bg-[#11131B] border border-white/10 p-6 sm:p-8 space-y-6 shadow-2xl">
+          <div className="relative rounded-3xl overflow-hidden bg-[#11131B] border border-white/10 p-4 sm:p-6 shadow-2xl">
             
             {/* Visual DJ Artwork Card */}
             <div className="relative aspect-[4/5] rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black flex flex-col justify-end p-6 group">
@@ -81,31 +58,6 @@ export const AboutDJ: React.FC = () => {
               <div className="absolute top-4 right-4 px-3 py-1 rounded-full bg-black/75 backdrop-blur-md border border-white/15 text-[10px] font-mono font-bold text-[#64DFFF] shadow-md">
                 OFFICIAL ARTIST
               </div>
-            </div>
-
-            {/* Social Media Links */}
-            <div className="grid grid-cols-2 gap-2.5">
-              {socials.map((s) => {
-                const Icon = s.icon;
-                return (
-                  <a
-                    key={s.name}
-                    href={s.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-[#7957FF] hover:bg-white/10 transition-all flex items-center justify-between group shadow-sm"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <Icon className="w-4 h-4 text-[#7957FF] group-hover:scale-110 transition-transform" />
-                      <div className="min-w-0 text-left">
-                        <div className="text-xs font-bold text-white truncate">{s.name}</div>
-                        <div className="text-[10px] text-zinc-400 truncate">{s.handle}</div>
-                      </div>
-                    </div>
-                    <ArrowUpRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-[#64DFFF] shrink-0" />
-                  </a>
-                );
-              })}
             </div>
 
           </div>
